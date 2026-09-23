@@ -5,6 +5,7 @@ import joblib
 import os
 import shap
 import matplotlib.pyplot as plt
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="FMC Abuja CDSS", layout="wide", page_icon="🩺")
 
@@ -211,13 +212,16 @@ if st.session_state.prediction_made:
             st.dataframe(shap_df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.markdown("""
+    components.html(
+        """
         <div style="text-align: center; margin-top: 10px; margin-bottom: 30px;">
-            <a href="javascript:window.print()" style="display:inline-block; padding:12px 24px; background-color:#1b7a43; color:white; text-decoration:none; border-radius:6px; font-weight:bold; font-size:16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <button onclick="window.parent.print()" style="display:inline-block; padding:12px 24px; background-color:#1b7a43; color:white; border:none; border-radius:6px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 🖨️ Print Clinical Report
-            </a>
+            </button>
         </div>
-    """, unsafe_allow_html=True)
+        """,
+        height=80
+    )
 
     st.markdown("---")
     st.subheader("📝 Evaluation Feedback")
