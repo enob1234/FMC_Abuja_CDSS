@@ -75,12 +75,12 @@ with st.sidebar:
     comorbidity_count = diabetes + ckd + heart_failure + stroke_history + obesity
 
     st.markdown("---")
+    feedback_file = "clinical_feedback_results.csv"
     with st.expander("Admin Login"):
         admin_pwd = st.text_input("Enter Admin Password", type="password")
         
     if admin_pwd == "fmc_admin2026":
         st.subheader("Admin & Analytics")
-        feedback_file = "clinical_feedback_results.csv"
         if os.path.exists(feedback_file):
             with open(feedback_file, "rb") as f:
                 st.download_button("📥 Download Feedback Data", f, file_name="clinical_feedback_results.csv", mime="text/csv")
