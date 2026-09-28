@@ -62,9 +62,11 @@ with col2:
     st.title("FMC Abuja Next-Visit SUH Risk Predictor")
 
 st.markdown("""
+<div style="text-align: justify; margin-bottom: 15px;">
 Welcome to the Clinical Decision Support System prototype for FMC Abuja. 
-This tool predicts whether a patient's blood pressure will remain **Sustained Uncontrolled (SUH)** at their **immediate next scheduled visit**.
-""")
+This tool predicts whether a patient's blood pressure will remain <b>Sustained Uncontrolled (SUH)</b> at their <b>immediate next scheduled visit</b>.
+</div>
+""", unsafe_allow_html=True)
 
 st.info("ℹ️ **Clinical Disclaimer:** This prediction and SHAP analysis is designed to guide and support the clinician, not to replace professional medical judgment. It serves as an assistive tool for clinical decision-making.")
 
