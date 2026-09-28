@@ -3,20 +3,46 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
+import datetime
 import shap
 import matplotlib.pyplot as plt
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="FMC Abuja CDSS", layout="wide", page_icon="🩺")
 
-# Hide Streamlit Deploy button and Main Menu (optional cleanliness)
-hide_streamlit_style = """
+# Hide Streamlit Deploy button, Main Menu, and add Print CSS
+custom_css = """
 <style>
     .stAppDeployButton {display:none;}
     .stDeployButton {display:none;}
+    
+    @media print {
+        /* Remove browser headers and footers (date, URL) */
+        @page {
+            margin-top: 15mm;
+            margin-bottom: 15mm;
+        }
+        
+        /* Hide sidebar, header, and footer */
+        section[data-testid="stSidebar"] { display: none !important; }
+        header { display: none !important; }
+        footer { display: none !important; }
+        
+        /* Hide the feedback form block */
+        div[data-testid="stForm"] { display: none !important; }
+        
+        /* Hide custom no-print elements */
+        .no-print { display: none !important; }
+        
+        /* Force background colors and charts to print correctly */
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+    }
 </style>
 """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+st.markdown(custom_css, unsafe_allow_html=True)
 
 # Load model
 @st.cache_resource
@@ -42,14 +68,18 @@ This tool predicts whether a patient's blood pressure will remain **Sustained Un
 
 st.info("ℹ️ **Clinical Disclaimer:** This prediction and SHAP analysis is designed to guide and support the clinician, not to replace professional medical judgment. It serves as an assistive tool for clinical decision-making.")
 
+current_date = datetime.datetime.now().strftime("%B %d, %Y - %I:%M %p")
+st.markdown(f"**Report Generated:** {current_date}")
+
 # Input form
 with st.sidebar:
     st.header("Patient Clinical Profile")
     age = st.number_input("Age (Years)", 18, 100, 55)
     sex = st.selectbox("Sex", options=[0, 1], format_func=lambda x: "Male" if x == 1 else "Female")
-    bmi = st.number_input("BMI", 15.0, 50.0, 28.5)
     weight_kg = st.number_input("Weight (kg)", 40.0, 150.0, 80.0)
     height_cm = st.number_input("Height (cm)", 140.0, 200.0, 165.0)
+    bmi = weight_kg / ((height_cm / 100.0) ** 2)
+    st.number_input("BMI (Auto-Calculated)", value=float(round(bmi, 2)), disabled=True)
     
     st.subheader("Blood Pressure History")
     sbp_previous = st.number_input("Previous Visit SBP", 90, 200, 145)
@@ -61,7 +91,7 @@ with st.sidebar:
     st.subheader("Medications & Adherence")
     num_antihypertensive_drugs = st.number_input("Number of Anti-HTN Drugs", 0, 5, 2)
     months_on_current_regimen = st.number_input("Months on Current Regimen", 0, 120, 12)
-    medication_class = st.selectbox("Primary Medication Class", options=[0, 3, 6], format_func=lambda x: {0: "CCB", 3: "ACEI/ARB", 6: "Diuretic"}.get(x, "Other"))
+    medication_class = st.selectbox("Primary Medication Class", options=[-1, 0, 3, 6], format_func=lambda x: {-1: "None", 0: "CCB", 3: "ACEI/ARB", 6: "Diuretic"}.get(x, "Other"))
     days_since_last_visit = st.number_input("Days Since Last Visit", 1, 365, 30)
     total_visits_to_date = st.number_input("Total Visits to Date", 1, 100, 15)
     missed_appointment = st.selectbox("Recent Missed Appointment?", [0, 1], format_func=lambda x: "Yes" if x == 1 else "No")
@@ -167,8 +197,10 @@ if st.session_state.prediction_made:
     
     df_input = pd.DataFrame([features])[expected_cols]
     
-    # Predict
+    # Predict and calculate SHAP globally for natural language explanations
     prob = model.predict_proba(df_input)[0][1]
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer(df_input)
     
     st.markdown("---")
     cols = st.columns(2)
@@ -176,17 +208,29 @@ if st.session_state.prediction_made:
         st.subheader("Prediction Result")
         risk_color = "red" if prob >= 0.5 else "green"
         st.markdown(f"<h1 style='color: {risk_color};'>{prob * 100:.1f}% Risk of Next-Visit SUH</h1>", unsafe_allow_html=True)
+        
         if prob >= 0.5:
             st.warning("⚠️ This patient is at high risk of Sustained Uncontrolled Hypertension at their next visit. Consider therapeutic escalation or adherence counseling.")
         else:
             st.success("✅ This patient's blood pressure is predicted to be controlled at their next visit.")
             
+        # Natural Language SHAP Summary
+        shap_summary_df = pd.DataFrame({
+            "Feature": expected_cols,
+            "Value": df_input.iloc[0].values,
+            "Contribution": shap_values[0].values
+        })
+        
+        if prob >= 0.5:
+            top_feat = shap_summary_df[shap_summary_df['Contribution'] > 0].sort_values(by='Contribution', ascending=False).iloc[0]
+            st.info(f"**Why High Risk?** The model found that the patient's **{top_feat['Feature']}** being **{top_feat['Value']:.1f}** was the biggest warning sign, increasing the risk score by **+{top_feat['Contribution']:.2f}**.")
+        else:
+            top_feat = shap_summary_df[shap_summary_df['Contribution'] < 0].sort_values(by='Contribution', ascending=True).iloc[0]
+            st.info(f"**Why Low Risk?** The model found that the patient's **{top_feat['Feature']}** being **{top_feat['Value']:.1f}** was the strongest protective factor, decreasing the risk score by **{top_feat['Contribution']:.2f}**.")
+
     with cols[1]:
         st.subheader("Explainability (SHAP)")
         st.info("Generating personalized SHAP waterfall plot...")
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer(df_input)
-        
         fig, ax = plt.subplots(figsize=(6, 4))
         shap.plots.waterfall(shap_values[0], max_display=10, show=False)
         st.pyplot(fig)
@@ -195,11 +239,13 @@ if st.session_state.prediction_made:
         **How to read this plot:**
         - 🔴 **Red bars** represent patient factors pushing the risk of uncontrolled blood pressure **higher**.
         - 🔵 **Blue bars** represent protective factors pushing the risk **lower**.
+        - **Grey numbers on the left (e.g., 142 = sbp_mean):** These are this specific patient's actual clinical measurements.
+        - **Numbers inside the arrows (e.g., +0.91):** The exact mathematical weight (log-odds) this feature added or subtracted from the patient's risk.
         - **E[f(X)]** is the baseline average risk (log-odds) across the entire FMC Abuja patient population.
-        - **f(x)** is the final predicted risk score (log-odds) for this specific patient before converting to a percentage.
+        - **f(x)** is the final predicted risk score (log-odds) for this specific patient, before the math converts it into the final percentage.
         """)
         
-        with st.expander("🔍 View All 28 Feature Contributions (Remove Blackbox)"):
+        with st.expander("🔍 View All 28 Feature Contributions (Remove Blackbox)", expanded=True):
             st.markdown("This table lists exactly how every single patient feature influenced the model's prediction, including the 19 features collapsed in the plot above.")
             shap_df = pd.DataFrame({
                 "Feature": expected_cols,
@@ -214,7 +260,12 @@ if st.session_state.prediction_made:
     st.markdown("---")
     components.html(
         """
-        <div style="text-align: center; margin-top: 10px; margin-bottom: 30px;">
+        <style>
+            @media print {
+                .print-btn-container { display: none !important; }
+            }
+        </style>
+        <div class="print-btn-container" style="text-align: center; margin-top: 10px; margin-bottom: 30px;">
             <button onclick="window.parent.print()" style="display:inline-block; padding:12px 24px; background-color:#1b7a43; color:white; border:none; border-radius:6px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 🖨️ Print Clinical Report
             </button>
@@ -223,9 +274,9 @@ if st.session_state.prediction_made:
         height=80
     )
 
-    st.markdown("---")
-    st.subheader("📝 Evaluation Feedback")
-    st.markdown("Please provide your feedback on this prediction to help improve the CDSS prototype for FMC Abuja.")
+    st.markdown('<hr class="no-print">', unsafe_allow_html=True)
+    st.markdown('<h3 class="no-print">📝 Evaluation Feedback</h3>', unsafe_allow_html=True)
+    st.markdown('<p class="no-print">Please provide your feedback on this prediction to help improve the CDSS prototype for FMC Abuja.</p>', unsafe_allow_html=True)
     
     with st.form("feedback_form"):
         col_f1, col_f2 = st.columns(2)
