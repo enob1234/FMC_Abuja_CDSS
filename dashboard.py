@@ -73,6 +73,13 @@ st.markdown(f"**Report Generated:** {current_date}")
 
 # Input form
 with st.sidebar:
+    st.header("EMR Database Integration")
+    pid = st.text_input("Enter Patient ID (PID)", placeholder="e.g. 123456", max_chars=6)
+    if st.button("🔍 Search & Auto-Fill"):
+        st.info("EMR Prototype: In the live hospital version, this button will securely fetch the patient's record from the FMC Abuja database and automatically populate all the fields below.")
+    
+    st.markdown("---")
+    
     st.header("Patient Clinical Profile")
     age = st.number_input("Age (Years)", 18, 100, 55)
     sex = st.selectbox("Sex", options=[0, 1], format_func=lambda x: "Male" if x == 1 else "Female")
